@@ -49,7 +49,7 @@ const startServer = async () => {
           "http://localhost:3000",
           "https://yuvax-git-feature-jayyuvaxs-projects.vercel.app",
           "https://yuvax.vercel.app",
-          "https://eduboo-frontend.vercel.app/"
+          "https://eduboo-frontend.vercel.app"
         ],
         credentials: true,
       })
