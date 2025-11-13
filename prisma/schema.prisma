@@ -1,0 +1,1000 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ENUMS
+enum Gender {
+  female
+  male
+}
+
+enum UserRole {
+  Student
+  Teacher
+  Admin
+  SuperAdmin
+  Sales
+}
+
+enum EnrollmentType {
+  demo
+  trial
+  paid
+}
+
+enum SlotStatus {
+  open
+  trial_reserved
+  paid_reserved
+}
+
+enum SessionStatus {
+  schedule
+  completed
+  cancelled
+  no_show
+  Reschedule
+}
+
+enum ClassType {
+  one_to_one
+  one_to_many
+  recorded
+}
+
+enum SessionType {
+  demo
+  paid
+  trial
+}
+
+enum Difficulty {
+  beginner
+  intermediate
+  advance
+  expert
+}
+
+enum PaymentStatus {
+  pending
+  Paid
+  Refund
+  processing
+}
+
+enum FeedbackRole {
+  student
+  teacher
+}
+
+enum QuizType {
+  popup // live class quiz, question pops up during session
+  normal // chapter quiz, feedback at end
+}
+
+enum QuizStatus {
+  assigned
+  submitted
+  graded
+}
+
+enum AssignmentType {
+  QUIZ
+  CODE_EXERCISE
+  PUZZLE
+}
+
+
+
+enum PlanType {
+  quarter
+  half
+  three_quarter
+  full
+}
+
+enum CourseType {
+  one_to_one
+  one_to_many
+  recorded
+}
+
+// MODELS
+model User {
+  user_id       String    @id @default(uuid())
+  full_name     String
+  age           String?
+  ip_address    String?
+  password      String
+  is_trial      Boolean   @default(false)
+  is_active     Boolean   @default(true)
+  parents_name  String?
+  zone          String?
+  country       String?
+  date_of_birth DateTime?
+  gender        Gender
+  phone         String    @unique
+  email         String    @unique
+  role          UserRole  @default(Student)
+  merithubUserId String? @unique
+  xp            Int       @default(0)  
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  // Performance Indexes
+  @@index([role, is_active]) // For filtering users by role and active status
+  @@index([country, role]) // For country-specific user queries
+  @@index([created_at]) // For date-based queries
+  @@index([is_trial, is_active]) // For trial user queries
+
+  // Relations
+  teacherProfile       TeachersRoaster?
+  salesPersonProfile   SalesRoster? // Connect to SalesRostercO
+  sessions             Session[]        @relation("SessionUsers")
+  payments             Payment[]
+  reservedSlots        Slot[]
+  feedbackGiven        Feedback[]       @relation("FeedbackGiver")
+  feedbackTaken        Feedback[]       @relation("FeedbackTaker")
+  assignmentsCreated   Assignment[]     @relation("AssignmentCreator")
+  homeworksCreated     Homework[]        @relation("HomeworkCreator")
+  submissionsAsStudent Submission[]      @relation("SubmissionStudent")
+  submissionsAsGrader  Submission[]      @relation("SubmissionGrader")
+  enrollments          Enrollment[]
+  quizAttempts         QuizAttempt[]
+  StudentProfile       StudentProfile[]
+  studentHomeworks     StudentHomework[] @relation("StudentHomework")
+  gradedHomeworks      StudentHomework[] @relation("GradedHomework")
+  studentAssignments  StudentAssignment[]
+}
+
+model TeachersRoaster {
+  teacher_id   String   @id @default(uuid())
+  days_of_week String[]
+
+  user      User      @relation(fields: [teacher_id], references: [user_id])
+  sessions  Session[]
+  countries Country[] @relation("TeacherCountries")
+  slots     Slot[]
+  courses   Course[]   @relation("CourseTeachers")
+}
+
+model Slot {
+  slot_id    Int        @id @default(autoincrement())
+  slot_date  DateTime
+  start_time DateTime
+  end_time   DateTime
+  capacity   Int
+  status     SlotStatus @default(open)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  teacherId  String
+  courseId   String?
+
+  course           Course?         @relation(fields: [courseId], references: [course_id])
+  teacher          TeachersRoaster @relation(fields: [teacherId], references: [teacher_id])
+  reservedByUserId String?
+  reservedByUser   User?           @relation(fields: [reservedByUserId], references: [user_id])
+  session          Session?
+  enrollments      Enrollment[]
+
+  // Performance Indexes
+  @@index([teacherId, slot_date]) // For teacher's slots by date
+  @@index([status, slot_date]) // For available slots
+  @@index([courseId, slot_date]) // For course-specific slots
+  @@index([reservedByUserId]) // For user's reserved slots
+}
+
+model SalesRoster {
+  sales_person_id String   @id @default(uuid())
+  email           String   @unique
+  phone_no        String   @unique
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  // A SalesRoster record is now linked to a User.
+  user User @relation(fields: [sales_person_id], references: [user_id])
+
+  payments    Payment[]    @relation("SalePayments")
+  sessions    Session[]    @relation("SaleSessions")
+  enrollments Enrollment[] @relation("SaleEnrollments")
+}
+
+model Module {
+  module_id          String   @id @default(uuid())
+  course_id          String
+  student_note_link  String?
+  teacher_note_link  String?
+  PPT_link           String?
+  module_description String?
+  module_title       String
+  duration           Int
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  course      Course             @relation(fields: [course_id], references: [course_id])
+  sessions    Session[]
+  chapters    Chapter[]
+  assignments Assignment[]
+  quiz        Quiz?
+  enrollments EnrollmentModule[]
+
+  @@index([course_id])
+}
+
+model Session {
+  session_id        String        @id @default(cuid())
+  channelName       String?       @unique
+  chapter_id        String?
+  teacher_id        String
+  module_id         String?
+  user_id           String
+  category_id       String
+  course_id         String
+  slot_id           Int           @unique
+  schedule_at       DateTime
+  status            SessionStatus @default(schedule)
+  class_type        ClassType
+  session_type      SessionType
+
+  // Whereby fields
+  whereby_meeting_id String?   @unique
+  whereby_room_url   String?
+  whereby_host_url   String?
+  whiteboard_url     String?
+
+  // Merithub fields
+  provider_class_id String? @unique
+  teacher_join_url  String?
+  student_join_url  String?
+  recording_url     String?
+  actual_start_time DateTime?
+  actual_end_time   DateTime?
+  sales_person_id   String?
+
+  // Dyte fields
+  dyte_session_id  String? @unique
+  dyte_app_id      String?
+  dyte_host_token  String?
+  dyte_join_tokens Json?
+
+  users       User[]          @relation("SessionUsers")
+  teacher     TeachersRoaster @relation(fields: [teacher_id], references: [teacher_id])
+  module      Module?         @relation(fields: [module_id], references: [module_id])
+  course      Course          @relation(fields: [course_id], references: [course_id])
+  category    Category        @relation(fields: [category_id], references: [category_id])
+  chapter     Chapter?        @relation(fields: [chapter_id], references: [chapter_id])
+  salesPerson SalesRoster?    @relation("SaleSessions", fields: [sales_person_id], references: [sales_person_id])
+  slot        Slot            @relation(fields: [slot_id], references: [slot_id])
+  feedback    Feedback[]
+  enrollments Enrollment[]    @relation("EnrollmentSessions")
+
+  @@unique([user_id, schedule_at])
+  @@unique([slot_id], map: "Session_slot_unique")
+
+  // Performance Indexes
+  @@index([user_id, status])
+  @@index([teacher_id, schedule_at])
+  @@index([course_id, status])
+  @@index([status, schedule_at])
+  @@index([session_type, status])
+}
+
+model Category {
+  category_id          String   @id @default(uuid())
+  category_name        String   @unique
+  category_description String
+  category_image       String?
+  created_at           DateTime @default(now())
+
+  courses        Course[]
+  sessions       Session[]
+  course_pricing CoursePricing[] // Back-relation to CoursePricing
+}
+
+model LearningObjective {
+  Learning_objective_id          String  @id @default(uuid())
+  course_id   String
+  
+  description String?      // short detail if needed
+  icon_url    String?      // image URL (cloud storage)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  course Course @relation(fields: [course_id], references: [course_id])
+  @@index([course_id])
+}
+
+model Course {
+  course_id          String     @id @default(uuid())
+  course_name        String
+  category_id        String
+  course_description String?
+  course_content     String?
+  course_image       String?
+  difficulty         Difficulty
+  course_duration    String
+  language           String
+  min_age            String
+  max_age            String?
+  course_type        CourseType        @default(one_to_one)
+  teachers           TeachersRoaster[] @relation("CourseTeachers")
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt @default(now())
+
+  category         Category        @relation(fields: [category_id], references: [category_id])
+  modules          Module[]
+  sessions         Session[]
+  payments         Payment[]
+  assignments      Assignment[]
+  homeworks        Homework[]
+  enrollments      Enrollment[]
+  slots            Slot[]
+  learning_objectives LearningObjective[]
+  course_pricing   CoursePricing[] // Back-relation to CoursePricing
+
+  // Performance Indexes
+  @@index([category_id])
+  @@index([course_type])
+}
+
+model Chapter {
+  chapter_id   String   @id @default(uuid())
+  module_id    String
+  chapter_name String
+  description  String?
+  capacity     Int?
+  updated_at   DateTime @updatedAt
+  created_at   DateTime @default(now())
+
+  module   Module    @relation(fields: [module_id], references: [module_id])
+  sessions Session[]
+  quizzes  Quiz[]
+  homeworks Homework[]
+
+  // Performance Indexes
+  @@index([module_id])
+}
+
+model Payment {
+  payment_ID             String        @id @default(uuid())
+  no_of_session_purchase Int?
+  sales_person_id        String?
+  user_id                String
+  is_converted           Boolean       @default(false)
+  course_id              String?
+  amount                 Float
+  currency               String
+  payment_method         String?
+  transaction_id         String        @unique
+  receipt                String?
+  status                 PaymentStatus @default(pending)
+  updated_at             DateTime      @updatedAt
+  created_at             DateTime      @default(now())
+  refunded_at            DateTime?
+  enrollment_id          String?       @unique
+  plan_type              PlanType?
+
+  user        User         @relation(fields: [user_id], references: [user_id])
+  course      Course?      @relation(fields: [course_id], references: [course_id])
+  salesPerson SalesRoster? @relation("SalePayments", fields: [sales_person_id], references: [sales_person_id])
+  enrollment  Enrollment?  @relation(fields: [enrollment_id], references: [enrollment_id])
+
+  // Performance Indexes
+  @@index([user_id, status])
+  @@index([course_id, status])
+  @@index([created_at])
+}
+
+model Feedback {
+  feedback_id String       @id @default(uuid())
+  sessionId   String?
+  giverId     String
+  giverRole   FeedbackRole
+  takerId     String
+  takerRole   FeedbackRole
+  rating      Int
+  comments    String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  session Session? @relation(fields: [sessionId], references: [session_id])
+  giver   User     @relation("FeedbackGiver", fields: [giverId], references: [user_id])
+  taker   User     @relation("FeedbackTaker", fields: [takerId], references: [user_id])
+
+  @@unique([sessionId, giverId, takerId])
+
+  // Performance Indexes
+  @@index([sessionId])
+  @@index([giverId])
+  @@index([takerId])
+}
+
+model Quiz {
+  quiz_id     String   @id @default(uuid())
+  chapter_id  String
+  module_id   String   @unique
+  title       String
+  description String?
+  type        QuizType @default(normal)
+  total_marks Int
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  chapter   Chapter       @relation(fields: [chapter_id], references: [chapter_id])
+  questions Question[]
+  attempts  QuizAttempt[]
+  module    Module        @relation(fields: [module_id], references: [module_id])
+
+  // Performance Indexes
+  @@index([chapter_id])
+  @@index([module_id])
+}
+
+model QuizAttempt {
+  attempt_id     String    @id @default(uuid())
+  quiz_id        String
+  student_id     String
+  started_at     DateTime  @default(now())
+  submitted_at   DateTime?
+  score          Int?
+  timer          String[]
+  AttemptedCount Int?
+  correctCount   Int?
+
+  quiz    Quiz     @relation(fields: [quiz_id], references: [quiz_id])
+  student User     @relation(fields: [student_id], references: [user_id])
+  answers Answer[]
+
+  // Performance Indexes
+  @@index([quiz_id])
+  @@index([student_id])
+  @@index([submitted_at])
+  @@index([quiz_id, student_id])
+  @@index([quiz_id, submitted_at])
+}
+
+model Answer {
+  answer_id       String   @id @default(uuid())
+  attempt_id      String
+  question_id     String
+  selected_option Int
+  is_correct      Boolean?
+
+  attempt  QuizAttempt @relation(fields: [attempt_id], references: [attempt_id])
+  question Question    @relation(fields: [question_id], references: [question_id])
+}
+
+model Question {
+  question_id    String   @id @default(uuid())
+  quiz_id        String
+  text           String
+  marks          Int
+  option1        String
+  option2        String
+  option3        String
+  option4        String
+  correct_answer Int
+  created_at     DateTime @default(now())
+
+  quiz    Quiz     @relation(fields: [quiz_id], references: [quiz_id])
+  answers Answer[]
+}
+
+model Assignment {
+  assignment_id String         @id @default(uuid())
+  course_id     String
+  module_id     String
+  title         String
+  description   String
+  instructions  String?
+  resources     Json?
+  max_score     Int?
+  start_date    DateTime?      @default(now())
+  end_date      DateTime?
+  allow_late    Boolean?       @default(false)
+  late_penalty  Int?
+  type          AssignmentType @default(QUIZ)
+  language      String?
+  starter_code  String?
+  metadata      Json?
+  reward_points Int            @default(10)
+  created_by    String
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  course      Course       @relation(fields: [course_id], references: [course_id])
+  module      Module       @relation(fields: [module_id], references: [module_id])
+  creator     User         @relation("AssignmentCreator", fields: [created_by], references: [user_id])
+  submissions Submission[]
+  studentAssignments  StudentAssignment[]
+
+  // Performance Indexes
+  @@index([course_id])
+  @@index([module_id])
+  @@index([created_by])
+  @@index([created_at])
+}
+
+model Homework {
+  homework_id   String         @id @default(uuid())
+  course_id     String
+  chapter_id    String
+  title         String
+  description   String
+  instructions  String?
+  resources     Json?
+  max_score     Int?
+  start_date    DateTime?      @default(now())
+  end_date      DateTime?
+  allow_late    Boolean?       @default(false)
+  late_penalty  Int?
+  type          AssignmentType @default(QUIZ)
+  language      String?
+  starter_code  String?
+  metadata      Json?
+  reward_points Int            @default(10)
+  created_by    String
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  course  Course  @relation(fields: [course_id], references: [course_id])
+  chapter Chapter @relation(fields: [chapter_id], references: [chapter_id])
+  creator User    @relation("HomeworkCreator", fields: [created_by], references: [user_id])
+  studentHomework StudentHomework[]
+
+  // Performance Indexes
+  @@index([course_id])
+  @@index([chapter_id])
+  @@index([created_by])
+  @@index([type])
+  @@index([created_at])
+  @@index([end_date])
+}
+
+model StudentHomework {
+  id              String     @id @default(uuid())
+  homework_id     String
+  student_id      String
+  status          String     @default("PENDING") // PENDING, IN_PROGRESS, SUBMITTED, GRADED, OVERDUE
+  submitted_at    DateTime?
+  submitted_data  Json?      // Student's submission (answers, code, etc.)
+  score           Float?     // Score out of max_score
+  feedback        String?
+  graded_by_id    String?    // Changed from graded_by to graded_by_id
+  graded_at       DateTime?
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+
+  homework        Homework   @relation(fields: [homework_id], references: [homework_id])
+  student         User       @relation("StudentHomework", fields: [student_id], references: [user_id])
+  grader          User?      @relation("GradedHomework", fields: [graded_by_id], references: [user_id]) // Updated field name here
+
+  @@index([homework_id])
+  @@index([student_id])
+  @@index([graded_by_id]) // Added index for better query performance
+}
+
+model StudentAssignment {
+  id             String   @id @default(uuid())
+  assignment_id  String
+  student_id     String
+  status         String   @default("PENDING") // PENDING, IN_PROGRESS, SUBMITTED, GRADED, OVERDUE
+  submitted_at   DateTime?
+  submitted_data Json?
+  score          Float?
+  feedback       String?
+  graded_by_id   String?
+  graded_at      DateTime?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  assignment Assignment @relation(fields: [assignment_id], references: [assignment_id])
+  student    User       @relation(fields: [student_id], references: [user_id])
+
+  @@index([assignment_id])
+  @@index([student_id])
+  @@index([graded_by_id])
+}
+
+model Submission {
+  submission_id  String    @id @default(uuid())
+  assignment_id  String
+  student_id     String
+  response_data  Json?
+  code           String?
+  language       String?
+  is_correct     Boolean?
+  marks_obtained Int?
+  feedback       String?
+  graded_by      String?
+  submitted_at   DateTime  @default(now())
+  graded_at      DateTime?
+
+  assignment Assignment @relation(fields: [assignment_id], references: [assignment_id])
+  student    User       @relation("SubmissionStudent", fields: [student_id], references: [user_id])
+  grader     User?      @relation("SubmissionGrader", fields: [graded_by], references: [user_id])
+
+  // Performance Indexes
+  @@index([assignment_id])
+  @@index([student_id])
+  @@index([graded_by])
+  @@index([submitted_at])
+  @@index([assignment_id, student_id])
+  @@index([assignment_id, submitted_at])
+  @@index([graded_by, graded_at])
+}
+
+// --- NEW AND UPDATED MODELS ---
+
+model Country {
+  country_id      String          @id @default(cuid())
+  country_name    String
+  country_code    String          @unique
+  iso_code        String          @unique
+  currency        String
+  zone_id         String?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  zone            Zone?           @relation(fields: [zone_id], references: [zone_id])
+  teachers        TeachersRoaster[] @relation("TeacherCountries")
+  course_pricing  CoursePricing[]
+  regional_config RegionalConfig?
+}
+
+model CoursePricing {
+  pricing_id          String    @id @default(cuid())
+  country_id          String
+  course_id           String
+  category_id         String
+  base_price          Float
+  discounted_price    Float?
+  current_price       Float
+  currency            String
+  discount_percentage Float?    @default(0)
+  tax_rate            Float?    @default(0)
+  price_factor        Decimal   @default(1.0)
+  effective_from      DateTime  @default(now())
+  effective_until     DateTime?
+  is_active           Boolean   @default(true)
+  created_by          String?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  country  Country  @relation(fields: [country_id], references: [country_id])
+  course   Course   @relation(fields: [course_id], references: [course_id])
+  category Category @relation(fields: [category_id], references: [category_id])
+
+  @@unique([country_id, course_id, effective_from])
+  @@index([country_id, course_id])
+  @@index([effective_from, effective_until])
+  @@index([is_active])
+}
+
+model RegionalConfig {
+  config_id             String   @id @default(cuid())
+  country_id            String   @unique
+  default_timezone      String
+  business_hours_start  String
+  business_hours_end    String
+  weekend_days          String[]
+  default_currency      String
+  tax_inclusive         Boolean  @default(false)
+  minimum_session_price Float?
+  maximum_session_price Float?
+  payment_methods       String[]
+  payment_currency      String
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  country Country @relation(fields: [country_id], references: [country_id])
+}
+
+// --- END OF NEW AND UPDATED MODELS ---
+
+model Enrollment {
+  enrollment_id   String         @id @default(uuid())
+  user_id         String
+  course_id       String
+  slot_id         Int?
+  enrollment_type EnrollmentType
+  enrollment_date DateTime       @default(now())
+  expiry_date     DateTime?
+  progress        Float          @default(0)
+  is_active       Boolean        @default(true)
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+  sales_person_id String?
+  plan_type       PlanType?
+
+  user        User               @relation(fields: [user_id], references: [user_id])
+  course      Course             @relation(fields: [course_id], references: [course_id])
+  slot        Slot?              @relation(fields: [slot_id], references: [slot_id])
+  salesPerson SalesRoster?       @relation("SaleEnrollments", fields: [sales_person_id], references: [sales_person_id])
+  sessions    Session[]          @relation("EnrollmentSessions")
+  payment     Payment?
+  modules     EnrollmentModule[]
+
+  @@index([user_id, course_id])
+  @@index([enrollment_type, is_active])
+  @@index([slot_id])
+  @@index([user_id, is_active])
+  @@index([course_id, is_active])
+  @@index([sales_person_id])
+  @@index([created_at])
+  @@index([expiry_date])
+}
+
+model EnrollmentModule {
+  id            String   @id @default(uuid())
+  enrollment_id String
+  module_id     String
+
+  enrollment Enrollment @relation(fields: [enrollment_id], references: [enrollment_id])
+  module     Module     @relation(fields: [module_id], references: [module_id])
+}
+
+model Zone {
+  zone_id        String    @id @default(uuid())
+  name           String
+  gmtOffset      String
+  primeTimeStart String
+  primeTimeEnd   String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  countries Country[]
+}
+
+
+// Report schema
+
+
+
+
+model StudentProfile {
+  profile_id       String   @id @default(uuid())
+  user_id          String   @unique
+  grade            String?
+  location         String?
+  joining_date     DateTime @default(now())
+  total_exp        Int      @default(0)
+  current_level    Int      @default(1)
+  exp_to_next_level Int     @default(100)
+  day_streak       Int      @default(0)
+  best_subject     String?
+  last_activity    DateTime @default(now())
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  user               User                 @relation(fields: [user_id], references: [user_id])
+  streak_history     StudentStreakHistory[]
+  attendance_records AttendanceRecord[]
+  performance_metrics StudentPerformanceMetrics[]
+
+  @@index([user_id])
+}
+
+model StudentStreakHistory {
+  streak_id   String   @id @default(uuid())
+  profile_id  String
+  date        DateTime @db.Date
+  exp_earned  Int      @default(0)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  profile StudentProfile @relation(fields: [profile_id], references: [profile_id])
+
+  @@unique([profile_id, date])
+  @@index([profile_id, date])
+  @@index([date])
+}
+
+model AttendanceRecord {
+  attendance_id String   @id @default(uuid())
+  session_id    String
+  profile_id    String
+  user_id       String
+  status        AttendanceStatus
+  arrival_time  DateTime?
+  leave_time    DateTime?
+  notes         String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  profile StudentProfile @relation(fields: [profile_id], references: [profile_id])
+
+  @@unique([session_id, user_id])
+  @@index([profile_id])
+  @@index([session_id])
+  @@index([user_id, status])
+  @@index([created_at])
+}
+
+enum AttendanceStatus {
+  attended
+  rescheduled
+  late_arrival
+  class_missed
+  no_show
+}
+
+model EngagementMetrics {
+  engagement_id       String   @id @default(uuid())
+  session_id          String   @unique
+  user_id             String
+  participation_level Int      @default(0)
+  interaction_score   Int      @default(0)
+  questions_asked     Int      @default(0)
+  questions_answered  Int      @default(0)
+  time_on_task        Int      @default(0)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@index([user_id])
+  @@index([session_id])
+  @@index([created_at])
+}
+
+model TopicProgress {
+  progress_id       String   @id @default(uuid())
+  user_id           String
+  course_id         String
+  module_id         String
+  chapter_id        String?
+  topic_name        String
+  completion_status Int      @default(0)
+  mastery_level     MasteryLevel @default(not_started)
+  time_spent        Int      @default(0)
+  last_accessed     DateTime @default(now())
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  @@unique([user_id, course_id, module_id, topic_name])
+  @@index([user_id, course_id])
+  @@index([user_id, module_id])
+  @@index([completion_status])
+  @@index([mastery_level])
+}
+
+enum MasteryLevel {
+  not_started
+  in_progress
+  completed
+  mastered
+}
+
+model ConceptMastery {
+  concept_id  String   @id @default(uuid())
+  user_id     String
+  course_id   String
+  skill_name  String
+  score       Int
+  strength    SkillStrength
+  last_tested DateTime
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([user_id, course_id, skill_name])
+  @@index([user_id, course_id])
+  @@index([skill_name])
+}
+
+enum SkillStrength {
+  needs_improvement
+  average
+  strong
+}
+
+model SkillAssessment {
+  assessment_id        String   @id @default(uuid())
+  user_id              String
+  course_id            String
+  problem_solving      Int      @default(0)
+  speed                Int      @default(0)
+  accuracy             Int      @default(0)
+  analytical_thinking  Int      @default(0)
+  creativity           Int      @default(0)
+  assessed_at          DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@unique([user_id, course_id, assessed_at])
+  @@index([user_id, course_id])
+  @@index([assessed_at])
+}
+
+model TestPerformance {
+  test_performance_id String   @id @default(uuid())
+  user_id             String
+  course_id           String
+  quiz_attempt_id     String?  @unique
+  test_name           String
+  score               Float
+  max_score           Float
+  percentage          Float
+  time_taken          Int?
+  test_date           DateTime
+  created_at          DateTime @default(now())
+
+  @@index([user_id, course_id])
+  @@index([user_id, test_date])
+  @@index([test_date])
+}
+
+model HomeworkMetrics {
+  homework_metrics_id String   @id @default(uuid())
+  user_id             String
+  course_id           String
+  week_number         Int?
+  month               Int?
+  year                Int
+  total_assigned      Int      @default(0)
+  total_submitted     Int      @default(0)
+  on_time_submissions Int      @default(0)
+  late_submissions    Int      @default(0)
+  study_hours         Float    @default(0)
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  @@unique([user_id, course_id, year, month])
+  @@index([user_id, course_id])
+  @@index([year, month])
+}
+
+model StudentPerformanceMetrics {
+  metrics_id                String   @id @default(uuid())
+  profile_id                String
+  user_id                   String
+  course_id                 String?
+  total_quizzes_attempted   Int      @default(0)
+  total_assignments_completed Int    @default(0)
+  average_quiz_score        Float    @default(0)
+  average_assignment_score  Float    @default(0)
+  attendance_rate           Float    @default(0)
+  engagement_score          Float    @default(0)
+  improvement_percentage    Float    @default(0)
+  total_study_hours         Float    @default(0)
+  current_streak            Int      @default(0)
+  longest_streak            Int      @default(0)
+  period_start              DateTime
+  period_end                DateTime
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+
+  profile StudentProfile @relation(fields: [profile_id], references: [profile_id])
+
+  @@unique([user_id, course_id, period_start, period_end])
+  @@index([profile_id])
+  @@index([user_id, course_id])
+  @@index([period_start, period_end])
+}
+
+model BehaviorMetrics {
+  behavior_id          String   @id @default(uuid())
+  user_id              String
+  course_id            String
+  session_id           String?
+  focus_score          Int      @default(0)
+  collaboration_score  Int      @default(0)
+  time_management_score Int     @default(0)
+  notes                String?
+  recorded_at          DateTime @default(now())
+  created_at           DateTime @default(now())
+
+  @@index([user_id, course_id])
+  @@index([session_id])
+  @@index([recorded_at])
+}
+
+
